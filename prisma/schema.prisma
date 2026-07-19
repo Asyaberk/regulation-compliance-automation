@@ -1,0 +1,57 @@
+// Prisma schema file for Regulation Compliance Automation System
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  NON_COMPLIANT
+  UNKNOWN
+}
+
+model Regulation {
+  id          String            @id @default(uuid())
+  title       String
+  description String?           @db.Text
+  sourceUrl   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  chunks      RegulationChunk[]
+
+  @@map("regulations")
+}
+
+model RegulationChunk {
+  id            String    @id @default(uuid())
+  regulationId  String
+  articleNumber String
+  content       String    @db.Text
+  embedding     Unsupported("vector(384)")?
+  createdAt     DateTime  @default(now())
+  regulation    Regulation @relation(fields: [regulationId], references: [id], onDelete: Cascade)
+
+  @@index([regulationId])
+  @@map("regulation_chunks")
+}
+
+model ComplianceAuditLog {
+  id                 String           @id @default(uuid())
+  query              String           @db.Text
+  response           String           @db.Text
+  status             ComplianceStatus @default(UNKNOWN)
+  executionTimeMs    Float
+  referencedChunkIds Json             @default("[]")
+  createdAt          DateTime         @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("compliance_audit_logs")
+}
