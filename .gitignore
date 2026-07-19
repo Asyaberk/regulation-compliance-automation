@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Production Build
+dist/
+
+# Environment Variables
+.env
+*.env.local
+
+# IDE & OS Files
+.DS_Store
+.vscode/
+.idea/
+
+# Logs & Coverage
+*.log
+npm-debug.log*
+coverage/
+
+# Prisma generated files
+prisma/generated/
