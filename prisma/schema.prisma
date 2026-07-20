@@ -1,4 +1,4 @@
-// Prisma schema file for Regulation Compliance Automation System
+// Prisma schema 
 
 generator client {
   provider        = "prisma-client-js"
