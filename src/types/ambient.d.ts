@@ -1,6 +1,13 @@
 // Ambient fallback type declarations for external modules prior to running npm install
 
 declare module '@nestjs/common' {
+  export interface LoggerService {
+    log(message: any, ...optionalParams: any[]): any;
+    error(message: any, ...optionalParams: any[]): any;
+    warn(message: any, ...optionalParams: any[]): any;
+    debug?(message: any, ...optionalParams: any[]): any;
+    verbose?(message: any, ...optionalParams: any[]): any;
+  }
   export interface OnModuleInit {
     onModuleInit(): any;
   }
