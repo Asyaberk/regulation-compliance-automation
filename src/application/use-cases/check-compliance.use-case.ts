@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ComplianceAuditLog } from '@domain/entities/regulation.entity';
+import { ComplianceAuditLog, Regulation, RegulationChunk } from '@domain/entities/regulation.entity';
 import { IRegulationRepository, REGULATION_REPOSITORY_TOKEN } from '@domain/interfaces/regulation-repository.interface';
 import { IEmbeddingService, EMBEDDING_SERVICE_TOKEN } from '@domain/interfaces/embedding-service.interface';
 import { ILlmService, LLM_SERVICE_TOKEN, ComplianceResult } from '@domain/interfaces/llm-service.interface';
 import { RedisService } from '@infrastructure/cache/redis.service';
+import { MevzuatGovTrFetcherService } from '@infrastructure/rag/mevzuat-fetcher.service';
 import { CheckComplianceDto } from '@application/dtos/check-compliance.dto';
 
 
-//Core Use Case for RAG Compliance Analysis Pipeline. performs Redis Caching, Hybrid Search Retrieval, Context Compression, Ollama Qwen Reasoning, and Audit Logging
+//Core Use Case for RAG Compliance Analysis Pipeline. performs Redis Caching, Hybrid Search Retrieval, Scrapper Agent, Context Compression, Ollama Qwen Reasoning, and Audit Logging
 
 
 @Injectable()
@@ -22,7 +23,8 @@ export class CheckComplianceUseCase{
         @Inject(LLM_SERVICE_TOKEN)
         private readonly llmService: ILlmService,
 
-        private readonly redisService: RedisService
+        private readonly redisService: RedisService,
+        private readonly mevzuatFetcherService: MevzuatGovTrFetcherService
     ) { }
     
     //rag comliance verification pipeliine
@@ -43,11 +45,22 @@ export class CheckComplianceUseCase{
         const scenarioEmbedding = await this.embeddingService.embed(dto.scenario);
 
         //hybrid search for top 3
-        const hybridSearchResults = await this.regulationRepository.searchHybrid(
+        let hybridSearchResults = await this.regulationRepository.searchHybrid(
             dto.scenario,
             scenarioEmbedding,
             3
         );
+
+        //if hybrid returns 0, fetch mevzuat.gov.tr
+        if (hybridSearchResults.length == 0) {
+            await this.autoFetchAndIndexFallback(dto.scenario);
+            //rerun hybrid on new db records
+            hybridSearchResults = await this.regulationRepository.searchHybrid(
+                dto.scenario,
+                scenarioEmbedding,
+                3
+            );
+        }
 
         //context comperession
         const contextChunks = hybridSearchResults.map(
@@ -81,6 +94,57 @@ export class CheckComplianceUseCase{
         return complianceResult;
 
     }
+
+    //scrapper agent if db is empty
+    private async autoFetchAndIndexFallback(query: string): Promise<void> {
+        try {
+            const defaultSourceUrl = 'https://www.mevzuat.gov.tr';
+            const fetchedText = await this.mevzuatFetcherService.fetchFromUrl(defaultSourceUrl);
+
+            if (fetchedText && fetchedText.length > 0) {
+                const regulationId = this.generateUuid();
+                const articleRegex = /(Madde\s+\d+[:\s.-]?)/gi;
+                const parts = fetchedText.split(articleRegex);
+
+                const chunks: RegulationChunk[] = [];
+                for (let i = 1; i < parts.length && chunks.length < 20; i += 2) {
+                    const articleNumber = parts[i].trim();
+                    const text = parts[i + 1] ? parts[i + 1].trim() : '';
+                    
+                    if (text.length > 0) {
+                        const fullContent = `${articleNumber} : ${text}`;
+                        const embedding = await this.embeddingService.embed(fullContent);
+
+                        chunks.push(
+                            new RegulationChunk(
+                                this.generateUuid(),
+                                regulationId,
+                                articleNumber,
+                                fullContent,
+                                embedding,
+                                new Date()
+                            ),
+                        );
+                    }
+                }
+
+                if (chunks.length > 0) {
+                    const regulation = new Regulation(
+                        regulationId,
+                        `Auto-Fetched Regulation for [${query}]`,
+                        'Dynamically fetched via MevzuatGovTr Agent Fallback',
+                        defaultSourceUrl,
+                        chunks,
+                        new Date(),
+                        new Date()
+                    );
+                    await this.regulationRepository.save(regulation);
+                }
+
+            }
+        }catch{}
+    }
+    
 
     private hashString(str: string): string{
         let hash = 0;
