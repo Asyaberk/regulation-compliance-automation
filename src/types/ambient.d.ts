@@ -1,6 +1,9 @@
 // Ambient fallback type declarations for external modules prior to running npm install
 
 declare module '@nestjs/common' {
+  export interface NestMiddleware {
+    use(req: any, res: any, next: (error?: any) => void): any;
+  }
   export interface LoggerService {
     log(message: any, ...optionalParams: any[]): any;
     error(message: any, ...optionalParams: any[]): any;
@@ -22,6 +25,7 @@ declare module '@nestjs/common' {
   export function Body(): ParameterDecorator;
   export function Param(param?: string): ParameterDecorator;
   export function Query(param?: string): ParameterDecorator;
+  export function HttpCode(code: number): MethodDecorator;
   export function UseGuards(...guards: any[]): MethodDecorator & ClassDecorator;
   export function UseInterceptors(...interceptors: any[]): MethodDecorator & ClassDecorator;
   export class HttpException extends Error {
@@ -34,6 +38,13 @@ declare module '@nestjs/common' {
     static NOT_FOUND: number;
     static INTERNAL_SERVER_ERROR: number;
   }
+}
+
+declare module '@nestjs/swagger' {
+  export function ApiTags(...tags: string[]): ClassDecorator & MethodDecorator;
+  export function ApiOperation(options: { summary: string; description?: string }): MethodDecorator;
+  export function ApiResponse(options: { status: number; description?: string; type?: any }): MethodDecorator;
+  export function ApiBearerAuth(name?: string): ClassDecorator & MethodDecorator;
 }
 
 declare module '@prisma/client' {
